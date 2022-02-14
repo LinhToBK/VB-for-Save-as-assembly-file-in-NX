@@ -1,0 +1,111 @@
+Option Strict Off
+
+' This program collects all loaded components
+' from the assembly tree and copies them all
+' into the specified target directory.
+
+Imports System
+Imports System.Collections 
+Imports System.IO
+Imports System.Environment
+Imports System.Windows.Forms
+Imports NXOpen
+Imports NXOpen.Assemblies
+Imports NXOpen.UF
+
+Module copy_assembly_to_target_directory
+
+    Dim theSession As Session = Session.GetSession()
+    Dim ufs As UFSession = UFSession.GetUFSession()
+    Dim lw As ListingWindow = theSession.ListingWindow
+
+    Sub Main()
+
+        Dim partlist As New ArrayList()
+        Dim foldername As String = ""
+
+        lw.Open()
+        If (select_directory(foldername) <> DialogResult.OK) Then
+            lw.WriteLine("Input canceled...exit" & vbCrLf)
+            Return
+        Else
+            lw.WriteLine("Target directory " & foldername & vbCrLf)
+        End If
+
+        Dim root As Component = _
+            theSession.Parts.Display.ComponentAssembly.RootComponent
+        Dim c_part As Part = root.Prototype
+        partlist.Add(c_part.FullPath)
+
+        AddComponentsToList(root, partlist)
+
+        CopyComponentsInList(partlist, foldername)
+        partlist.Clear()
+
+    End Sub
+
+    Sub AddComponentsToList( ByVal comp As Component, _
+        ByRef plist As ArrayList)
+
+        Dim child As Component = Nothing
+        Dim c_part As Part = Nothing
+        Dim loaded As Integer
+        Dim modified As Boolean
+        Dim nxman As Boolean = False
+        Dim cp_name As String = Nothing
+
+        For Each child In comp.GetChildren()
+            cp_name = child.DisplayName()
+
+            Dim loadStatus As UFPart.LoadStatus = nothing
+            ufs.Assem.EnsureChildLoaded( ufs.Assem.AskInstOfPartOcc(child.Tag), loadStatus)
+            If loadStatus.failed = True Then
+                lw.WriteLine("Cannot load " & child.DisplayName())
+            Else 
+                c_part = child.Prototype
+                If plist.Contains(c_part.FullPath) = false Then
+                    plist.Add(c_part.FullPath)
+                End If
+                AddComponentsToList(child, plist)
+            End If
+                 
+        Next
+    End Sub
+
+    Sub CopyComponentsInList( ByVal plist As ArrayList, _
+        ByVal targetfolder As String )
+
+        Dim en As IEnumerator = plist.GetEnumerator
+        While en.MoveNext
+          Dim fi as new system.io.fileinfo(en.Current)
+          Dim targetfile As String = targetfolder & "\" & fi.name
+          lw.WriteLine("Copying " & en.Current & " --> " & targetfile)
+          File.Copy(en.Current, targetfile , True)
+        End While
+
+    End Sub
+
+
+    Public Function select_directory(ByRef foldername) As DialogResult
+
+        Dim fbd As FolderBrowserDialog
+        Dim result As DialogResult
+
+        fbd = New FolderBrowserDialog()
+        fbd.Description = "Select target directory"
+        fbd.ShowNewFolderButton = True
+        ' start browsing at Desktop folder, uncomment for any other default directory
+        ' fbd.SelectedPath = GetEnvironmentVariable("UGII_BASE_DIR")
+        ' fbd.SelectedPath = "c:\temp\target"
+        result = fbd.ShowDialog()
+        foldername = fbd.SelectedPath
+        fbd.Dispose()
+        Return result
+
+    End Function
+
+    Public Function GetUnloadOption(ByVal dummy As String) As Integer
+        Return Session.LibraryUnloadOption.Immediately
+    End Function
+
+End Module
